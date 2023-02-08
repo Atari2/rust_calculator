@@ -49,8 +49,9 @@ fn split_line(buf: &String) -> Vec<Type> {
     separated
 }
 
-fn parse_line(buf: &String) -> Result<f64, Box<dyn error::Error>> {
-    let numbers = split_line(buf);
+fn parse_line(orig_buf: &String) -> Result<f64, Box<dyn error::Error>> {
+    let buf: String = orig_buf.chars().filter(|c| !c.is_whitespace()).collect();
+    let numbers = split_line(&buf);
     let mut tree = Tree::new();
     let mut stack: Vec<Operand> = vec![];
     let mut output: Vec<Operand> = vec![];
@@ -61,10 +62,15 @@ fn parse_line(buf: &String) -> Result<f64, Box<dyn error::Error>> {
                 canparseunary = false;
                 output.push(Operand::new(num.clone(), Priority::Number));
                 while stack.len() > 0 {
-                    if stack.last().unwrap().priority == Priority::Unary {
-                        output.push(stack.pop().unwrap());
-                    } else {
-                        break;
+                    match stack.last() {
+                        Some(Operand {priority: Priority::Unary, ..}) => {
+                            let last = match stack.pop() {
+                                Some(operand) => operand,
+                                None => return Err(Box::from("Invalid unary operator"))
+                            };
+                            output.push(last);
+                        }
+                        _ => break
                     }
                 }
             }
@@ -72,10 +78,10 @@ fn parse_line(buf: &String) -> Result<f64, Box<dyn error::Error>> {
                 match prio {
                     Priority::Low | Priority::Medium | Priority::High | Priority::Higher | Priority::Max => {
                         if canparseunary {
-                            while stack.len() != 0 {
-                                let last = stack.last().unwrap();
+                            while let Some(last) = stack.last() {
                                 if last.priority > Priority::Unary && last.priority != Priority::LeftParens {
-                                    output.push(stack.pop().unwrap());
+                                    output.push(last.clone());
+                                    stack.pop();
                                 } else {
                                     break;
                                 }
@@ -88,10 +94,10 @@ fn parse_line(buf: &String) -> Result<f64, Box<dyn error::Error>> {
                             }
                         } 
                         else {
-                            while stack.len() != 0 {
-                                let last = stack.last().unwrap();
+                            while let Some(last) = stack.last() {
                                 if last.priority >= prio && last.priority != Priority::LeftParens {
-                                    output.push(stack.pop().unwrap());
+                                    output.push(last.clone());
+                                    stack.pop();
                                 } else {
                                     break;
                                 }
@@ -108,13 +114,18 @@ fn parse_line(buf: &String) -> Result<f64, Box<dyn error::Error>> {
                         if stack.len() == 0 {
                             return Err(Box::from("Mismatched parenthesis"));
                         }
-                        while stack.last().unwrap().priority != Priority::LeftParens {
-                            output.push(stack.pop().unwrap());
+                        while let Some(last) = stack.last() {
+                            if last.priority == Priority::LeftParens {
+                                break;
+                            }
+                            if let Some(last) = stack.pop() {
+                                output.push(last);
+                            }
                             if stack.len() == 0 {
                                 return Err(Box::from("Mismatched parenthesis"));
                             }
                         }
-                        if stack.last().unwrap().priority == Priority::LeftParens {
+                        if let Some(Operand{priority: Priority::LeftParens, ..}) = stack.last() {
                             stack.pop();
                         }
                         canparseunary = false;
@@ -124,17 +135,43 @@ fn parse_line(buf: &String) -> Result<f64, Box<dyn error::Error>> {
             }
         } 
     }
-    while stack.len() > 0 {
-        let last = stack.pop().unwrap();
+    while let Some(last) = stack.pop() {
         if last.priority == Priority::LeftParens || last.priority == Priority::RightParens {
             return Err(Box::from("Mismatched parenthesis"));
         }
         output.push(last);
     }
-    println!("{:?}", output);
     tree.head = Node::new_empty();
-    tree.populate(&mut output)?;
-    Ok(tree.navigate()?)
+    match tree.populate(&mut output) {
+        Ok(_) => (),
+        Err(e) => {
+            tree.print(); 
+            return Err(Box::from(e))
+        }
+    }
+    let ret = Ok(tree.navigate()?);
+    tree.print();
+    ret
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_line;
+    #[test]
+    fn basic_test() {
+        let a = "1 + 2 * 3".to_string();
+        let b = "(1 + 2) * 3".to_string();
+        let c = "1 + 2 * 3 + 4".to_string();
+        let d = "(1+2)*(1*2-3)*3^4".to_string();
+        let val = parse_line(&a);
+        let val2 = parse_line(&b);
+        let val3 = parse_line(&c);
+        let val4 = parse_line(&d);
+        assert_eq!(val.unwrap(), 7.0);
+        assert_eq!(val2.unwrap(), 9.0);
+        assert_eq!(val3.unwrap(), 11.0);
+        assert_eq!(val4.unwrap(), -243.0);
+    }
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {

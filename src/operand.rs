@@ -38,7 +38,8 @@ impl Ord for Operand {
 pub struct Node {
     pub operand: Option<Operand>,
     pub left: Option<Box<Node>>,
-    pub right: Option<Box<Node>>
+    pub right: Option<Box<Node>>,
+    pub value: f64
 }
 
 #[derive(Debug)]
@@ -48,7 +49,7 @@ pub struct Tree {
 
 impl Node {
     pub fn new_empty() -> Node {
-        Node{operand: None, left: None, right: None }
+        Node{operand: None, left: None, right: None, value: 0.0}
     }
 
     pub fn populate(&mut self, operands: &mut Vec<Operand>) -> Result<(), Box<dyn std::error::Error>> {
@@ -56,14 +57,17 @@ impl Node {
             self.operand = operands.pop();
             let op: &Operand = self.operand.as_ref().ok_or("Empty operand")?;
             if op.priority != Priority::Number && op.priority != Priority::Unary && operands.len() > 1 {
-                self.left = Some(Box::from(Node::new_empty()));
-                self.right = Some(Box::from(Node::new_empty()));
-                self.right.as_mut().unwrap().as_mut().populate(operands)?;
-                self.left.as_mut().unwrap().as_mut().populate(operands)?;
+                let mut left = Node::new_empty();
+                let mut right = Node::new_empty();
+                right.populate(operands)?;
+                left.populate(operands)?;
+                self.left = Some(Box::new(left));
+                self.right = Some(Box::new(right));
             } else if op.priority == Priority::Unary {
-                self.left = Some(Box::from(Node::new_empty()));
+                let mut left = Node::new_empty();
+                left.populate(operands)?;
+                self.left = Some(Box::new(left));
                 self.right = None;
-                self.left.as_mut().unwrap().as_mut().populate(operands)?;
             } else if op.priority == Priority::Number {
                 return Ok(())
             } else {
@@ -72,11 +76,12 @@ impl Node {
         }
         Ok(())
     }
-    pub fn navigate(&self) -> Result<f64, Box<dyn std::error::Error>> {
-        if self.right.is_some() && self.left.is_some() {
-            let leftres = self.left.as_ref().unwrap().navigate()?;
-            let rightres = self.right.as_ref().unwrap().navigate()?;
-            let result = match self.operand.as_ref().ok_or("Empty operand")?.symbol.as_str() {
+    pub fn navigate(&mut self) -> Result<f64, Box<dyn std::error::Error>> {
+        let tuple = (&mut self.left, &mut self.right, &self.operand);
+        if let (Some(left), Some(right), Some(op)) = tuple {
+            let leftres = left.navigate()?;
+            let rightres = right.navigate()?;
+            let result = match op.symbol.as_str() {
                 "+" => leftres + rightres,
                 "-" => leftres - rightres,
                 "*" => leftres * rightres,
@@ -90,24 +95,43 @@ impl Node {
                 "(" | ")" => return Err(Box::from("Parens should be stripped before arriving here")), 
                 _ => return Err(Box::from("Unrecognized operator"))
             };
+            self.value = result;
             return Ok(result);
-        } else if self.left.is_some() {
-            assert_eq!(self.operand.as_ref().ok_or("Empty operand")?.priority, Priority::Unary);
-            let op = self.operand.as_ref().unwrap();
-            let mut val = self.left.as_ref().unwrap().navigate()?;
+        } else if let (Some(left), None, Some(op)) = tuple {
+            assert_eq!(op.priority, Priority::Unary);
+            let mut val = left.navigate()?;
             val = match op.symbol.as_str() {
                 "+" => val,
                 "-" => -val,
                 "~" => !(val as i64) as f64,
                 _ => return Err(Box::from("Invalid unary operator"))
             };
+            self.value = val;
             return Ok(val);
         } else {
-            if self.operand.is_none() {
+            if let Some(op) = &self.operand {
+                self.value = str::parse::<f64>(op.symbol.as_str())?;
+                return Ok(self.value);
+            } else {
                 return Err(Box::from("Broken mathematical expression, only valid unary operators or repeatable operators are -, ! and +"    ))
             }
-            let op = self.operand.as_ref().unwrap();
-            return Ok(str::parse::<f64>(op.symbol.as_str())?);
+        }
+    }
+
+    pub fn print(&self, depth: usize) {
+        if self.operand.is_some() {
+            let depth_str = vec!['\t'; depth].iter().collect::<String>();
+            if let Some(op) = &self.operand {
+                println!("{}{:?} => partial result {}", depth_str, op, self.value);
+            }
+            if let Some(left) = &self.left {
+                println!("{}left child: ", depth_str);
+                left.print(depth + 1);
+            }
+            if let Some(right) = &self.right {
+                println!("{}right child: ", depth_str);
+                right.print(depth + 1);
+            }
         }
     }
 }
@@ -121,8 +145,12 @@ impl Tree {
         self.head.populate(operands)
     }
 
-    pub fn navigate(&self) -> Result<f64, Box<dyn std::error::Error>> {
+    pub fn navigate(&mut self) -> Result<f64, Box<dyn std::error::Error>> {
         self.head.navigate()
+    }
+
+    pub fn print(&self) {
+        self.head.print(0);
     }
 }
 
