@@ -14,10 +14,6 @@ impl PartialEq for Operand {
     fn eq(&self, other: &Self) -> bool {
         self.symbol == other.symbol
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        !self.eq(other)
-    }
 }
 
 impl Eq for Operand {}
@@ -53,7 +49,7 @@ impl Node {
     }
 
     pub fn populate(&mut self, operands: &mut Vec<Operand>) -> Result<(), Box<dyn std::error::Error>> {
-        if operands.len() > 0 {
+        if !operands.is_empty() {
             self.operand = operands.pop();
             let op: &Operand = self.operand.as_ref().ok_or("Empty operand")?;
             if op.priority != Priority::Number && op.priority != Priority::Unary && operands.len() > 1 {
@@ -96,7 +92,7 @@ impl Node {
                 _ => return Err(Box::from("Unrecognized operator"))
             };
             self.value = result;
-            return Ok(result);
+            Ok(result)
         } else if let (Some(left), None, Some(op)) = tuple {
             assert_eq!(op.priority, Priority::Unary);
             let mut val = left.navigate()?;
@@ -108,13 +104,11 @@ impl Node {
             };
             self.value = val;
             return Ok(val);
+        } else if let Some(op) = &self.operand {
+            self.value = str::parse::<f64>(op.symbol.as_str())?;
+            return Ok(self.value);
         } else {
-            if let Some(op) = &self.operand {
-                self.value = str::parse::<f64>(op.symbol.as_str())?;
-                return Ok(self.value);
-            } else {
-                return Err(Box::from("Broken mathematical expression, only valid unary operators or repeatable operators are -, ! and +"    ))
-            }
+            return Err(Box::from("Broken mathematical expression, only valid unary operators or repeatable operators are -, ! and +"    ))
         }
     }
 

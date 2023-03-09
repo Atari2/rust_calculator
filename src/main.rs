@@ -35,7 +35,7 @@ fn split_line(buf: &String) -> Vec<Type> {
     };
     let indices: Vec<_> = buf.match_indices(symbols).collect();
     let mut separated: Vec<Type> = vec![];
-    let mut prev_index = 0 as usize;
+    let mut prev_index = 0_usize;
     for (index, symbol) in indices {
         if prev_index != index && index - prev_index != 0 {
             separated.push(Type::Number(buf[prev_index..index].trim().into()));
@@ -49,7 +49,7 @@ fn split_line(buf: &String) -> Vec<Type> {
     separated
 }
 
-fn parse_line(orig_buf: &String) -> Result<f64, Box<dyn error::Error>> {
+fn parse_line(orig_buf: &str) -> Result<f64, Box<dyn error::Error>> {
     let buf: String = orig_buf.chars().filter(|c| !c.is_whitespace()).collect();
     let numbers = split_line(&buf);
     let mut tree = Tree::new();
@@ -61,7 +61,7 @@ fn parse_line(orig_buf: &String) -> Result<f64, Box<dyn error::Error>> {
             Type::Number(num) => {
                 canparseunary = false;
                 output.push(Operand::new(num.clone(), Priority::Number));
-                while stack.len() > 0 {
+                while !stack.is_empty() {
                     match stack.last() {
                         Some(Operand {priority: Priority::Unary, ..}) => {
                             let last = match stack.pop() {
@@ -111,7 +111,7 @@ fn parse_line(orig_buf: &String) -> Result<f64, Box<dyn error::Error>> {
                         canparseunary = true;
                     }
                     Priority::RightParens => {
-                        if stack.len() == 0 {
+                        if stack.is_empty() {
                             return Err(Box::from("Mismatched parenthesis"));
                         }
                         while let Some(last) = stack.last() {
@@ -121,7 +121,7 @@ fn parse_line(orig_buf: &String) -> Result<f64, Box<dyn error::Error>> {
                             if let Some(last) = stack.pop() {
                                 output.push(last);
                             }
-                            if stack.len() == 0 {
+                            if stack.is_empty() {
                                 return Err(Box::from("Mismatched parenthesis"));
                             }
                         }
@@ -146,7 +146,7 @@ fn parse_line(orig_buf: &String) -> Result<f64, Box<dyn error::Error>> {
         Ok(_) => (),
         Err(e) => {
             tree.print(); 
-            return Err(Box::from(e))
+            return Err(e)
         }
     }
     let ret = Ok(tree.navigate()?);
