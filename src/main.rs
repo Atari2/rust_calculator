@@ -13,10 +13,7 @@ macro_rules! map {
     }};
 }
 
-fn split_line(buf: &String) -> Vec<Type> {
-    // << and >> are not here because match_indices apparently can't match &[str] but only &[char]. Sad times.
-    // when I find a way to split them easily, the rest is already set up to handle them.
-    let symbols = &['+', '-', '*', '/', '%', '^', '|', '&', '(', ')', '~'][..];
+fn split_line(buf: &String) -> Result<Vec<Type>, Box<dyn error::Error>> {
     let map: HashMap<&str, Priority> = 
     map!{
         "+" => Priority::High, 
@@ -33,7 +30,21 @@ fn split_line(buf: &String) -> Vec<Type> {
         "(" => Priority::LeftParens,
         ")" => Priority::RightParens
     };
-    let indices: Vec<_> = buf.match_indices(symbols).collect();
+    let mut indices = vec![];
+    let mut i = 0;
+    while i < buf.len() {
+        let c = &buf[i..i+1];
+        if c == ">" || c == "<" {
+            let the_two_chars = &buf[i..i+2];
+            if map.contains_key(&the_two_chars) {
+                indices.push((i, the_two_chars));
+                i += 1;
+            }
+        } else if map.contains_key(&c) {
+            indices.push((i, c));
+        }
+        i += 1;
+    }
     let mut separated: Vec<Type> = vec![];
     let mut prev_index = 0_usize;
     for (index, symbol) in indices {
@@ -46,12 +57,12 @@ fn split_line(buf: &String) -> Vec<Type> {
     if prev_index != buf.len() {
         separated.push(Type::Number(buf[prev_index..].trim().into()));
     }
-    separated
+    Ok(separated)
 }
 
 fn parse_line(orig_buf: &str) -> Result<f64, Box<dyn error::Error>> {
     let buf: String = orig_buf.chars().filter(|c| !c.is_whitespace()).collect();
-    let numbers = split_line(&buf);
+    let numbers = split_line(&buf)?;
     let mut tree = Tree::new();
     let mut stack: Vec<Operand> = vec![];
     let mut output: Vec<Operand> = vec![];
@@ -163,14 +174,17 @@ mod tests {
         let b = "(1 + 2) * 3".to_string();
         let c = "1 + 2 * 3 + 4".to_string();
         let d = "(1+2)*(1*2-3)*3^4".to_string();
+        let e = "1<<2>>1".to_string();
         let val = parse_line(&a);
         let val2 = parse_line(&b);
         let val3 = parse_line(&c);
         let val4 = parse_line(&d);
+        let val5 = parse_line(&e);
         assert_eq!(val.unwrap(), 7.0);
         assert_eq!(val2.unwrap(), 9.0);
         assert_eq!(val3.unwrap(), 11.0);
         assert_eq!(val4.unwrap(), -243.0);
+        assert_eq!(val5.unwrap(), 2.0);
     }
 }
 
